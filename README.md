@@ -21,6 +21,8 @@ install.packages(c(
 ))
 
 ---
+```
+```r
 
 ## 📌 Passo a passo
 

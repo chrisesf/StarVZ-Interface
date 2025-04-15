@@ -20,15 +20,15 @@ install.packages(c(
   "tidyr", "tibble", "fs"
 ))
 
----
 ```
-```r
+
 
 ## 📌 Passo a passo
-
+```r
 1. Rode o app
 2. Escolha o diretório com os dados
 3. Selecione o arquivo `.yaml`
 4. Clique em **Carregar Dados**
 5. Configure as opções desejadas
 6. Clique em **Gerar Gráfico Interativo**
+```

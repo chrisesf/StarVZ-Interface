@@ -11,52 +11,6 @@ library(fs)
 
 source("plotly_panel.R")
 
-# Função para criar o gráfico Plotly com customdata para o JobId
-panel_st_plotly_native_v1 <- function(data) {
-  plotly_raw_data <- data$Application %>%
-    arrange(End) %>%
-    select(Start, End, ResourceId, Height, Value, JobId) %>%
-    mutate(xP0 = Start, yP0 = ResourceId,                 # 1º ponto
-           xP1 = End,   yP1 = ResourceId,                 # 2º ponto
-           xP2 = End,   yP2 = ResourceId,                 # 3º ponto
-           xP3 = Start, yP3 = ResourceId,                 # 4º ponto
-           xP4 = Start, yP4 = ResourceId,                 # Volta ao ponto inicial
-           xP5 = NA,    yP5 = NA) %>%                     # NA para sinalizar o fim do polígono
-    select(-Start, -End, -Height)
-  
-  plotly_data_xy <- plotly_raw_data %>%
-    pivot_longer(
-      cols = starts_with("x") | starts_with("y"),
-      names_to = c(".value", "group"),
-      names_pattern = "(.)P(\\d)"
-    )
-  
-  plotly_data <- plotly_data_xy %>%
-    left_join(data$Colors %>% select(Value, Color), by = "Value")
-  
-  p <- plot_ly(data = plotly_data,
-               x = ~x,
-               y = ~y,
-               mode = "lines",
-               fill = "toself",
-               text = ~paste("Value:", Value, "<br>JobId:", JobId),
-               customdata = ~JobId,
-               hoveron = "points",
-               hoverinfo = "text",
-               type = "scatter",
-               split = ~Value,
-               color = I(plotly_data$Color))
-  
-  p <- p %>% layout(
-    xaxis = list(
-      rangeslider = list(visible = TRUE), 
-      range = c(data$config$limits$start, data$config$limits$end)
-    )
-  )
-  
-  return(p)
-}
-
 ui <- fluidPage(
   useShinyjs(),
   

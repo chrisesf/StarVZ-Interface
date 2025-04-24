@@ -13,7 +13,6 @@ source("plotly_panel.R")
 
 # Função para criar o gráfico Plotly com customdata para o JobId
 panel_st_plotly_native_v1 <- function(data) {
-  # Construir os pontos do retângulo
   plotly_raw_data <- data$Application %>%
     arrange(End) %>%
     select(Start, End, ResourceId, Height, Value, JobId) %>%
@@ -25,7 +24,6 @@ panel_st_plotly_native_v1 <- function(data) {
            xP5 = NA,    yP5 = NA) %>%                     # NA para sinalizar o fim do polígono
     select(-Start, -End, -Height)
   
-  # Transformar os dados em pares x e y
   plotly_data_xy <- plotly_raw_data %>%
     pivot_longer(
       cols = starts_with("x") | starts_with("y"),
@@ -33,11 +31,9 @@ panel_st_plotly_native_v1 <- function(data) {
       names_pattern = "(.)P(\\d)"
     )
   
-  # Mesclar com as informações de cor
   plotly_data <- plotly_data_xy %>%
     left_join(data$Colors %>% select(Value, Color), by = "Value")
   
-  # Criar o gráfico Plotly e incluir customdata para capturar o JobId
   p <- plot_ly(data = plotly_data,
                x = ~x,
                y = ~y,
@@ -51,7 +47,6 @@ panel_st_plotly_native_v1 <- function(data) {
                split = ~Value,
                color = I(plotly_data$Color))
   
-  # Adicionar o range slider usando os limites configurados
   p <- p %>% layout(
     xaxis = list(
       rangeslider = list(visible = TRUE), 
@@ -154,7 +149,11 @@ ui <- fluidPage(
           h3("Features"),
           conditionalPanel(
             condition = "input.st == true",
-            checkboxInput("idleness_all", "Ativar Idleness All", FALSE),
+            checkboxInput("idleness", "Ativar Idleness", FALSE),
+            conditionalPanel(
+              condition = "input.idleness == true",
+              checkboxInput("idleness_all", "Ativar Idleness All", FALSE)
+            ),
             checkboxInput("legend", "Ativar Legend", FALSE),
             checkboxInput("makespan", "Ativar Makespan", FALSE),
             checkboxInput("cpb", "Ativar CPB", FALSE),
@@ -200,6 +199,7 @@ update_config <- function(dado, input) {
     legend = input$legend,
     makespan = input$makespan,
     cpb = input$cpb,
+    idleness = input$idleness,
     idleness_all = input$idleness_all,
     cpb_mpi = list(active = input$cpb_mpi_active),
     tasks = list(
@@ -227,20 +227,28 @@ server <- function(input, output, session) {
   })
   
   rv <- reactiveValues(dado = NULL)
+  idleness_enabled <- reactiveVal(FALSE)
   
   observeEvent(input$load_data, {
     req(input$data_dir, input$config_file)
     
     data_dir <- parseDirPath(c(home = fs::path_home()), input$data_dir)
+    updateCheckboxInput(session, "idleness", value = isTRUE(rv$dado$config$st$idleness))
     config_file <- input$config_file$datapath
     
     rv$dado <- starvz_read(paste0(data_dir, "/"), config_file, FALSE)
+    idleness_enabled(isTRUE(rv$dado$config$st$idleness))
     
     rv$dado$config$st$labels <- input$labels
     rv$dado$config$starpu$active <- input$starpu
     rv$dado$config$submitted$active <- input$submitted
     rv$dado$config$st$outliers <- input$outliers
   })
+  
+  output$show_idleness_all <- reactive({
+    idleness_enabled()
+  })
+  outputOptions(output, "show_idleness_all", suspendWhenHidden = FALSE)
   
   calculate_height <- function(input) {
     base_height <- 600
@@ -266,7 +274,6 @@ server <- function(input, output, session) {
   observeEvent(input$plotly_button, {
     req(rv$dado)
     dado <- update_config(rv$dado, input)
-    # Desativar alguns painéis para o gráfico Plotly
     dado$config$submitted$active <- FALSE
     dado$config$starpu$active <- FALSE
     dado$config$ready$active <- FALSE
@@ -294,13 +301,10 @@ server <- function(input, output, session) {
     shinyjs::hide("back_button")
   })
   
-  # Observar cliques no gráfico Plotly e atualizar o input "tasks_list"
   observeEvent(event_data("plotly_click"), {
     click_info <- event_data("plotly_click")
     if (!is.null(click_info)) {
-      # Extrair o JobId do customdata
       job_id <- click_info$customdata
-      # Concatenar o novo valor com o atual (se houver)
       novo_valor <- if (nchar(input$tasks_list) > 0) {
         paste0(input$tasks_list, ",", job_id)
       } else {

@@ -1,16 +1,16 @@
 #!/usr/bin/env Rscript
-args = commandArgs(trailingOnly=TRUE)
+# args = commandArgs(trailingOnly=TRUE)
 
-if (length(args)==0) {
-  trace_dir = getwd()
-  conf = NULL
-} else if (length(args)==1) {
-  trace_dir = args[1]
-  conf = NULL
-} else if (length(args)==2) {
-  trace_dir = args[1]
-  conf = args[2]
-}
+# if (length(args)==0) {
+#   trace_dir = getwd()
+#   conf = NULL
+# } else if (length(args)==1) {
+#   trace_dir = args[1]
+#   conf = NULL
+# } else if (length(args)==2) {
+#   trace_dir = args[1]
+#   conf = args[2]
+# }
 
 library(starvz)
 library(tibble)
@@ -93,4 +93,4 @@ phase2 <- function(direct2, config_file = NULL){
 
 dados <- phase2(trace_dir, config_file = conf)
 
-starvz_plot(dados, save = TRUE)
+#starvz_plot(dados, save = TRUE)

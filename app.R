@@ -34,43 +34,45 @@ sidebar_ui <- function() {
       
       h3("2. Analysis Panels"),
       checkboxInput("panel_st_active", "Space-Time", value = TRUE),
-      checkboxInput("panel_kiteration_active", "K-Iterations", value = TRUE),
+      checkboxInput("panel_kiteration_active", "K-Iterations", value = FALSE),
       
       conditionalPanel(
         condition = "input.workflow_type == 'StarVZ'",
-        checkboxInput("panel_submitted_active", "Submitted Tasks", value = TRUE),
-        checkboxInput("panel_starpu_active", "StarPU Activity", value = TRUE),
-        checkboxInput("panel_ready_active", "Ready Queue", value = TRUE)
+        checkboxInput("panel_submitted_active", "Submitted Tasks", value = FALSE),
+        checkboxInput("panel_starpu_active", "StarPU Activity", value = FALSE),
+        checkboxInput("panel_ready_active", "Ready Queue", value = FALSE)
       ),
       
       h3("3. Options (Space-Time Panel)"),
       conditionalPanel("input.panel_st_active == true",
-        checkboxInput("st_legend", "Legend", FALSE),
-        checkboxInput("st_makespan", "Makespan", FALSE),
-        checkboxInput("st_outliers", "Outliers", FALSE),
-        
-        conditionalPanel(
-          condition = "input.workflow_type == 'StarVZ'",
-          checkboxInput("st_idleness", "Idleness", FALSE),
-          conditionalPanel("input.st_idleness == true",
-            checkboxInput("st_idleness_all", "Idleness All", FALSE)
-          ),
-          checkboxInput("st_cpb", "CPB", FALSE),
-          checkboxInput("st_tasks_active", "Highlight Tasks", FALSE),
-          conditionalPanel("input.st_tasks_active == true",
-            numericInput("st_tasks_levels", "Levels", value = 3, min = 1, step = 1),
-            # RÓTULO ATUALIZADO AQUI
-            numericInput("st_tasks_list", "Task ID to Highlight", value = 5553)
-          )
-        ),
-        
-        selectInput("st_labels", "Resource Labels:",
-                    choices = c("ALL", "1CPU_per_NODE", "1GPU_per_NODE", "FIRST_LAST", "NODES_only", "NODES_1_in_10", "1CPU_1GPU", "ALL_nompi"),
-                    selected = "FIRST_LAST")
+                       checkboxInput("st_legend", "Legend", FALSE),
+                       checkboxInput("st_makespan", "Makespan", FALSE),
+                       checkboxInput("st_outliers", "Outliers", FALSE),
+                       
+                       conditionalPanel(
+                         condition = "input.workflow_type == 'StarVZ'",
+                         checkboxInput("st_idleness", "Idleness", FALSE),
+                         conditionalPanel("input.st_idleness == true",
+                                          checkboxInput("st_idleness_all", "Idleness All", FALSE)
+                         ),
+                         checkboxInput("st_cpb", "CPB", FALSE),
+                         checkboxInput("st_tasks_active", "Highlight Tasks", FALSE),
+                         conditionalPanel("input.st_tasks_active == true",
+                                          numericInput("st_tasks_levels", "Levels", value = 3, min = 1, step = 1),
+                                          # RÓTULO ATUALIZADO AQUI
+                                          numericInput("st_tasks_list", "Task ID to Highlight", value = "1")
+                         )
+                       ),
+                       
+                       selectInput("st_labels", "Resource Labels:",
+                                   choices = c("ALL", "1CPU_per_NODE", "1GPU_per_NODE", "FIRST_LAST", "NODES_only", "NODES_1_in_10", "1CPU_1GPU", "ALL_nompi"),
+                                   selected = "FIRST_LAST")
       ),
       
       hr(),
       actionButton("plotly_button", "Generate Interactive Plot", class = "btn"),
+      # BOTÃO DE DOWNLOAD ADICIONADO AQUI
+      downloadButton("download_plot", "Download Static Plot (PNG)", class = "btn"),
       shinyjs::hidden(
         actionButton("back_button", "Back to Static Plot", class = "btn")
       )
@@ -105,14 +107,14 @@ server <- function(input, output, session) {
     req(input$data_dir)
     parseDirPath(c(home = fs::path_home()), input$data_dir)
   })
-
+  
   rv <- reactiveValues(dado = NULL, data_dir = NULL, log_text = "Ready to load data.")
-
+  
   observeEvent(input$load_data, {
     req(input$data_dir)
     rv$data_dir <- parseDirPath(c(home = fs::path_home()), input$data_dir)
     config_file <- if (!is.null(input$config_file)) input$config_file$datapath else NULL
-
+    
     if (input$workflow_type == "StarVZ") {
       parquet_files <- fs::dir_ls(rv$data_dir, glob = "*.parquet")
       if (length(parquet_files) == 0) {
@@ -124,10 +126,10 @@ server <- function(input, output, session) {
         return()
       }
       withProgress(message = 'Loading StarVZ data...', value = 0.5, {
-        rv$dado <- starvz_read(rv$data_dir, config_file)
+        rv$dado <- starvz_read(rv$data_dir, config_file, selective = FALSE)
       })
       showNotification("StarVZ data loaded successfully!", type = "message")
-
+      
     } else if (input$workflow_type == "Tikki") {
       processed_file <- file.path(rv$data_dir, "paje.worker_state.csv.gz")
       if (!file.exists(processed_file)) {
@@ -158,7 +160,7 @@ server <- function(input, output, session) {
       })
     }
   })
-
+  
   observeEvent(input$run_starvz_phase1, {
     removeModal()
     req(rv$data_dir)
@@ -177,7 +179,7 @@ server <- function(input, output, session) {
       shinyjs::alert("Phase 1 executed, but no .parquet files generated.")
     }
   })
-
+  
   observeEvent(input$run_tikki_phase1, {
     removeModal()
     req(rv$data_dir)
@@ -194,17 +196,17 @@ server <- function(input, output, session) {
       shinyjs::alert("Phase 1 executed, but no expected file.")
     }
   })
-
+  
   data_to_plot <- reactive({
     req(rv$dado)
     temp_data <- rv$dado
-
+    
     if (input$workflow_type == "StarVZ") {
       if (!is.null(temp_data$config$submitted)) temp_data$config$submitted$active <- input$panel_submitted_active
       if (!is.null(temp_data$config$starpu)) temp_data$config$starpu$active <- input$panel_starpu_active
       if (!is.null(temp_data$config$ready)) temp_data$config$ready$active <- input$panel_ready_active
     }
-
+    
     if (!is.null(temp_data$config$st)) {
       temp_data$config$st$active <- input$panel_st_active
       temp_data$config$st$legend <- input$st_legend
@@ -212,13 +214,13 @@ server <- function(input, output, session) {
       temp_data$config$st$outliers <- input$st_outliers
       temp_data$config$st$labels <- input$st_labels
       #remover
-      temp_data$config$kiteration$subite = TRUE
-
+      temp_data$config$kiteration$subite = FALSE
+      
       if (input$workflow_type == "StarVZ") {
         temp_data$config$st$idleness <- input$st_idleness
         temp_data$config$st$idleness_all <- input$st_idleness_all
         temp_data$config$st$cpb <- input$st_cpb
-
+        
         if (is.null(temp_data$config$st$tasks)) {
           temp_data$config$st$tasks <- list()
         }
@@ -226,36 +228,36 @@ server <- function(input, output, session) {
         temp_data$config$st$tasks$active <- FALSE
         temp_data$config$st$tasks$list <- character(0)
         temp_data$config$st$tasks$levels <- input$st_tasks_levels
-
+        
         task_id_input <- input$st_tasks_list
-
-        if (input$st_tasks_active && nchar(task_id_input) > 0) {
-          # Verificação defensiva: Confirma que o JobId existe nos dados da aplicação.
-          if (task_id_input %in% rv$dado$Application$JobId) {
+        
+        if (input$st_tasks_active) {
             temp_data$config$st$tasks$active <- TRUE
-            #TODO passar pra tipo list
-            temp_data$config$st$tasks$list <- task_id_input
-          } else {
-            # Opcional: Notifica o usuário se o ID for inválido.
-            showNotification(paste("Warning: JobId '", task_id_input, "' not found."), type = "warning")
-          }
+            temp_data$config$st$tasks$list <- c(as.character(task_id_input))
         }
       }
     }
-
+    
     if (!is.null(temp_data$config$kiteration)) temp_data$config$kiteration$active <- input$panel_kiteration_active
-
+    
     return(temp_data)
   })
-
-  output$plot <- renderPlot({
+  
+  # NOVO: Objeto reativo para o gráfico estático. Evita recálculo.
+  static_plot_object <- reactive({
+    req(data_to_plot())
     starvz_plot(data_to_plot())
   })
-
+  
+  # renderPlot agora usa o objeto reativo.
+  output$plot <- renderPlot({
+    static_plot_object()
+  })
+  
   output$plotly_plot <- renderPlotly({
     d <- data_to_plot()
     req(d, d$Application, nrow(d$Application) > 0)
-
+    
     plotly_raw_data <- d$Application %>%
       arrange(End) %>%
       select(Start, End, Position, Height, Value, JobId) %>%
@@ -265,13 +267,13 @@ server <- function(input, output, session) {
         xP4 = Start, yP4 = Position, xP5 = NA, yP5 = NA
       ) %>%
       select(-Start, -End, -Position, -Height)
-
+    
     plotly_data_xy <- plotly_raw_data %>%
       pivot_longer(
         cols = starts_with("x") | starts_with("y"),
         names_to = c(".value", "group"), names_pattern = "(.)P(\\d)"
       )
-
+    
     plotly_data <- plotly_data_xy %>%
       left_join(d$Colors %>% select(Value, Color), by = "Value")
     
@@ -286,11 +288,11 @@ server <- function(input, output, session) {
       yaxis = list(title = "Resource"),
       showlegend = input$st_legend, hovermode = "closest", dragmode = "zoom"
     )
-
+    
     event_register(p_plotly, "plotly_click")
     return(p_plotly)
   })
-
+  
   output$plot_ui <- renderUI({
     if (is.null(rv$dado)) {
       return(h3("Select a directory and load data to get started."))
@@ -307,7 +309,38 @@ server <- function(input, output, session) {
       hr(), h4("Execution Log"), verbatimTextOutput("log")
     )
   })
-
+  
+  # NOVO: Handler para o botão de download
+  output$download_plot <- downloadHandler(
+    filename = function() {
+      paste0("starvz-plot-", Sys.Date(), ".png")
+    },
+    content = function(file) {
+      # Recalcula a altura do gráfico para garantir que a imagem salva tenha o tamanho correto
+      active_panels <- list(st = input$panel_st_active, kiteration = input$panel_kiteration_active)
+      if (input$workflow_type == "StarVZ") {
+        active_panels$submitted <- input$panel_submitted_active
+        active_panels$starpu <- input$panel_starpu_active
+        active_panels$ready <- input$panel_ready_active
+      }
+      
+      plot_height_px <- max(sum(unlist(active_panels)) * 400, 600)
+      # Define uma largura padrão para o arquivo
+      plot_width_px <- 1200 
+      
+      # Usa ggsave para salvar o gráfico (que está no objeto reativo) em um arquivo PNG
+      ggsave(
+        file, 
+        plot = static_plot_object(), 
+        device = "png",
+        width = plot_width_px,
+        height = plot_height_px,
+        units = "px",
+        dpi = 96 
+      )
+    }
+  )
+  
   observeEvent(event_data("plotly_click"), {
     click_data <- event_data("plotly_click")
     
@@ -319,7 +352,7 @@ server <- function(input, output, session) {
       showNotification(paste("Highlighting JobId:", clicked_job_id), type = "message")
     }
   })
-
+  
   observeEvent(input$plotly_button, {
     req(rv$dado)
     shinyjs::hide("plot")
@@ -328,14 +361,14 @@ server <- function(input, output, session) {
     shinyjs::show("back_button")
     showNotification("Interactive plot generated.", type = "message")
   })
-
+  
   observeEvent(input$back_button, {
     shinyjs::show("plot")
     shinyjs::hide("plotly_container")
     shinyjs::show("plotly_button")
     shinyjs::hide("back_button")
   })
-
+  
   output$log <- renderText({
     rv$log_text
   })

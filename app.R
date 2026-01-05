@@ -55,7 +55,19 @@ sidebar_ui <- function() {
                          conditionalPanel("input.st_idleness == true",
                                           checkboxInput("st_idleness_all", "Idleness All", FALSE)
                          ),
+                         checkboxInput("st_abe", "ABE", FALSE),
                          checkboxInput("st_cpb", "CPB", FALSE),
+                         checkboxInput("st_agg", "Aggregation", FALSE),
+                         conditionalPanel("input.st_agg == true",
+                                          selectInput("st_agg_method", "Aggregation Method:",
+                                                      choices = c("dynamic", "static", "nodes"),
+                                                      selected = "dynamic"),
+                                          # RÓTULO ATUALIZADO AQUI
+                                          numericInput("st_agg_step", "Aggregation step: ", value = "1000")
+                         ),
+                         conditionalPanel("input.st_agg == true && input.st_agg_method == 'dynamic'",
+                                          textInput("st_agg_states", "States to aggregate: ")
+                         ),
                          checkboxInput("st_tasks_active", "Highlight Tasks", FALSE),
                          conditionalPanel("input.st_tasks_active == true",
                                           numericInput("st_tasks_levels", "Levels", value = 3, min = 1, step = 1),
@@ -63,11 +75,15 @@ sidebar_ui <- function() {
                                           numericInput("st_tasks_list", "Task ID to Highlight", value = "1")
                          )
                        ),
+                       checkboxInput("st_rectoutline", "Tasks border", FALSE),
                        
                        selectInput("st_labels", "Resource Labels:",
                                    choices = c("ALL", "1CPU_per_NODE", "1GPU_per_NODE", "FIRST_LAST", "NODES_only", "NODES_1_in_10", "1CPU_1GPU", "ALL_nompi"),
                                    selected = "FIRST_LAST")
       ),
+      h3("4. General"),
+      hr(),
+      uiOutput("slider_limits"),
       
       hr(),
       actionButton("plotly_button", "Generate Interactive Plot", class = "btn"),
@@ -215,12 +231,26 @@ server <- function(input, output, session) {
       temp_data$config$st$labels <- input$st_labels
       #remover
       temp_data$config$kiteration$subite = FALSE
+      # rect_outline
+      temp_data$config$st$rect_outline <- input$st_rectoutline
+
+      # limits from slider
+      temp_data$config$limits$start <- input$range_limit[1]
+      temp_data$config$limits$end <- input$range_limit[2]
       
       if (input$workflow_type == "StarVZ") {
         temp_data$config$st$idleness <- input$st_idleness
         temp_data$config$st$idleness_all <- input$st_idleness_all
         temp_data$config$st$cpb <- input$st_cpb
+        temp_data$config$st$abe$active <- input$st_abe
+
+        # aggregation 
+        temp_data$config$st$aggregation$active <- input$st_agg
+        temp_data$config$st$aggregation$method <- input$st_agg_method
+        temp_data$config$st$aggregation$step <- input$st_agg_step
+        temp_data$config$st$aggregation$states <- input$st_agg_states
         
+        # task dependency chain
         if (is.null(temp_data$config$st$tasks)) {
           temp_data$config$st$tasks <- list()
         }
@@ -257,6 +287,9 @@ server <- function(input, output, session) {
   output$plotly_plot <- renderPlotly({
     d <- data_to_plot()
     req(d, d$Application, nrow(d$Application) > 0)
+
+    # Y label data
+    yconfm <- starvz:::yconf(d$Application, d$config$st$labels, d$Y)
     
     plotly_raw_data <- d$Application %>%
       arrange(End) %>%
@@ -284,8 +317,13 @@ server <- function(input, output, session) {
       type = "scatter", split = ~Value, color = I(plotly_data$Color),
       line = list(width = 0.5)
     ) %>% layout(
-      xaxis = list(title = "Time (ms)", rangeslider = list(visible = TRUE)),
-      yaxis = list(title = "Resource"),
+      xaxis = list(title = "Time [ms]"
+                   , range = c(d$config$limits$start,d$config$limits$end)
+                 #, rangeslider = list(visible = TRUE)
+                   ),
+      yaxis = list(title = "Application Workers",
+                   tickvals = yconfm$Position + (yconfm$Height / 3),
+                   ticktext = as.character(yconfm$ResourceId)),
       showlegend = input$st_legend, hovermode = "closest", dragmode = "zoom"
     )
     
@@ -340,6 +378,21 @@ server <- function(input, output, session) {
       )
     }
   )
+
+  output$slider_limits <- renderUI({
+      req(rv$dado)
+      rv$dado$Application %>%
+          pull(End) %>%
+          max(na.rm = TRUE) %>%
+          round(2) -> max_val
+      sliderInput(
+          inputId = "range_limit",
+          label = "Selecione o intervalo:",
+          min = 0,
+          max = max_val,
+          value = c(0, max_val)
+      )
+  })
   
   observeEvent(event_data("plotly_click"), {
     click_data <- event_data("plotly_click")
@@ -374,5 +427,14 @@ server <- function(input, output, session) {
   })
 }
 
+args = commandArgs(trailingOnly=TRUE)
+
 # Initialize the Shiny app
-shinyApp(ui = ui, server = server)
+if (length(args)==0) {
+    shinyApp(ui = ui, server = server)
+} else if (length(args)==1) {
+    port = as.integer(args[1])
+    print(paste("Running on port:", port))
+    options(shiny.port = port)
+    shinyApp(ui = ui, server = server)
+}

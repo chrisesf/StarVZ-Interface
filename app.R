@@ -40,7 +40,8 @@ sidebar_ui <- function() {
         condition = "input.workflow_type == 'StarVZ'",
         checkboxInput("panel_submitted_active", "Submitted Tasks", value = FALSE),
         checkboxInput("panel_starpu_active", "StarPU Activity", value = FALSE),
-        checkboxInput("panel_ready_active", "Ready Queue", value = FALSE)
+        checkboxInput("panel_ready_active", "Ready Queue", value = FALSE),
+        checkboxInput("panel_lackready_active", "Lack Ready", value = FALSE)
       ),
       
       h3("3. Options (Space-Time Panel)"),
@@ -49,8 +50,8 @@ sidebar_ui <- function() {
                        checkboxInput("st_makespan", "Makespan", FALSE),
                        checkboxInput("st_outliers", "Outliers", FALSE),
                        
-                       conditionalPanel(
-                         condition = "input.workflow_type == 'StarVZ'",
+#                       conditionalPanel(
+#                        condition = "input.workflow_type == 'StarVZ'",
                          checkboxInput("st_idleness", "Idleness", FALSE),
                          conditionalPanel("input.st_idleness == true",
                                           checkboxInput("st_idleness_all", "Idleness All", FALSE)
@@ -74,7 +75,8 @@ sidebar_ui <- function() {
                                           # RÓTULO ATUALIZADO AQUI
                                           numericInput("st_tasks_list", "Task ID to Highlight", value = "1")
                          )
-                       ),
+#                       )
+                      ,
                        checkboxInput("st_rectoutline", "Tasks border", FALSE),
                        
                        selectInput("st_labels", "Resource Labels:",
@@ -84,6 +86,7 @@ sidebar_ui <- function() {
       h3("4. General"),
       hr(),
       uiOutput("slider_limits"),
+      checkboxInput("panel_log", "Enable log", value = FALSE),
       
       hr(),
       actionButton("plotly_button", "Generate Interactive Plot", class = "btn"),
@@ -216,11 +219,16 @@ server <- function(input, output, session) {
   data_to_plot <- reactive({
     req(rv$dado)
     temp_data <- rv$dado
+
+    if (input$panel_log) {
+        starvz_set_log(TRUE)
+    }
     
     if (input$workflow_type == "StarVZ") {
       if (!is.null(temp_data$config$submitted)) temp_data$config$submitted$active <- input$panel_submitted_active
       if (!is.null(temp_data$config$starpu)) temp_data$config$starpu$active <- input$panel_starpu_active
       if (!is.null(temp_data$config$ready)) temp_data$config$ready$active <- input$panel_ready_active
+      if (!is.null(temp_data$config$lackready)) temp_data$config$lackready$active <- input$panel_lackready_active
     }
     
     if (!is.null(temp_data$config$st)) {
@@ -238,7 +246,7 @@ server <- function(input, output, session) {
       temp_data$config$limits$start <- input$range_limit[1]
       temp_data$config$limits$end <- input$range_limit[2]
       
-      if (input$workflow_type == "StarVZ") {
+#      if (input$workflow_type == "StarVZ") {
         temp_data$config$st$idleness <- input$st_idleness
         temp_data$config$st$idleness_all <- input$st_idleness_all
         temp_data$config$st$cpb <- input$st_cpb
@@ -265,7 +273,7 @@ server <- function(input, output, session) {
             temp_data$config$st$tasks$active <- TRUE
             temp_data$config$st$tasks$list <- c(as.character(task_id_input))
         }
-      }
+#      } #
     }
     
     if (!is.null(temp_data$config$kiteration)) temp_data$config$kiteration$active <- input$panel_kiteration_active
@@ -340,6 +348,7 @@ server <- function(input, output, session) {
       active_panels$submitted <- input$panel_submitted_active
       active_panels$starpu <- input$panel_starpu_active
       active_panels$ready <- input$panel_ready_active
+      active_panels$lackready <- input$panel_lackready_active
     }
     tagList(
       plotOutput("plot", width = "100%", height = calculate_height(active_panels)),
